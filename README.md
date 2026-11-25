@@ -100,7 +100,7 @@ Options:
 | `--pfx-password-env <VAR>` | Environment variable holding the PFX password |
 | `--thumbprint <HEX>` | 40-character SHA-1 thumbprint in the current user's store |
 | `--timestamp-url <URL>` | RFC 3161 timestamp service, default `http://timestamp.digicert.com` |
-| `--signtool <PATH>` | Explicit `signtool.exe`; otherwise found in `PATH` or the Windows SDK |
+| `--signtool <PATH>` | Explicit `signtool.exe`; otherwise found in `SIGNTOOL_PATH`, `PATH` or the Windows SDK |
 | `--description <TEXT>` | Signature description, default is the configured application name |
 
 `--pfx` requires `--pfx-password-env`. `--unsigned` conflicts with `--pfx`
