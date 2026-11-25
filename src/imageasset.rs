@@ -259,6 +259,27 @@ mod tests {
     }
 
     #[test]
+    fn converts_avif_background_to_webp() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("background.avif");
+        let rgba = [
+            30u8, 60, 90, 255, 10, 20, 30, 255, 40, 50, 60, 255, 70, 80, 90, 255,
+        ];
+        let bytes = oxideav_avif::encode_rgba8(
+            2,
+            2,
+            &rgba,
+            &oxideav_avif::EncodeOptions::default().with_lossless(true),
+        )
+        .unwrap();
+        std::fs::write(&path, bytes).unwrap();
+        let processed = process_background(&path).unwrap();
+        assert_eq!(processed.package_name, "assets/background.webp");
+        assert!(processed.bytes.starts_with(b"RIFF"));
+        assert_eq!(&processed.bytes[8..12], b"WEBP");
+    }
+
+    #[test]
     fn rejects_disguised_html() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("background.png");
