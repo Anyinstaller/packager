@@ -45,6 +45,44 @@ impl Layout {
     }
 }
 
+/// Track file names and the directories implied by nested paths. A package
+/// cannot contain both `assets` and `assets/icon.ico`: extraction would have
+/// to create a file and a directory at the same path.
+fn register_name(
+    name: &str,
+    names: &mut HashSet<String>,
+    parent_paths: &mut HashSet<String>,
+) -> Result<()> {
+    let key = name.to_lowercase();
+    if names.contains(&key) {
+        bail!("duplicate package entry: {name}");
+    }
+    if parent_paths.contains(&key) {
+        bail!("package entry {name} is both a file and a parent directory");
+    }
+
+    let mut ancestors = Vec::new();
+    let mut ancestor = String::new();
+    let components: Vec<&str> = key.split('/').collect();
+    for (index, component) in components.iter().enumerate() {
+        if index > 0 {
+            ancestor.push('/');
+        }
+        ancestor.push_str(component);
+        if index + 1 == components.len() {
+            break;
+        }
+        if names.contains(&ancestor) {
+            bail!("package entry {name} is nested under a file");
+        }
+        ancestors.push(ancestor.clone());
+    }
+
+    names.insert(key);
+    parent_paths.extend(ancestors);
+    Ok(())
+}
+
 /// Streaming writer for the appended AIP archive. The stub is copied first and
 /// hashed; every added entry is hashed while it is written, so no component is
 /// ever held in memory as a whole.
@@ -56,6 +94,7 @@ pub struct Writer {
     directory_size: u64,
     entries: Vec<Entry>,
     names: HashSet<String>,
+    parent_paths: HashSet<String>,
     stub_size: u64,
     stub_sha256: [u8; 32],
     buffer: Vec<u8>,
@@ -113,6 +152,7 @@ impl Writer {
             directory_size: DIRECTORY_HEADER_LEN,
             entries: Vec::new(),
             names: HashSet::new(),
+            parent_paths: HashSet::new(),
             stub_size,
             stub_sha256,
             buffer: vec![0u8; COPY_BUFFER],
@@ -226,10 +266,6 @@ impl Writer {
 
     fn prepare_name(&mut self, name: &str) -> Result<String> {
         let name = path::validate_entry_name(name)?;
-        let key = name.to_lowercase();
-        if !self.names.insert(key) {
-            bail!("duplicate package entry: {name}");
-        }
         if self.entries.len() >= MAX_ENTRIES {
             bail!("package has more than {MAX_ENTRIES} entries");
         }
@@ -240,6 +276,8 @@ impl Writer {
         if directory_size > MAX_DIRECTORY_BYTES {
             bail!("package directory would exceed {MAX_DIRECTORY_BYTES} bytes");
         }
+
+        register_name(&name, &mut self.names, &mut self.parent_paths)?;
         self.directory_size = directory_size;
         Ok(name)
     }
@@ -595,6 +633,7 @@ fn parse_archive(file: &File, footer: &Footer) -> Result<Layout> {
 
     let mut entries = Vec::with_capacity(count);
     let mut names = HashSet::new();
+    let mut parent_paths = HashSet::new();
     let mut total_size = 0u64;
     for _ in 0..count {
         let name_len = cursor.u16()? as usize;
@@ -607,9 +646,7 @@ fn parse_archive(file: &File, footer: &Footer) -> Result<Layout> {
         if name != raw_name {
             bail!("archive entry names must use '/' separators: {raw_name:?}");
         }
-        if !names.insert(name.to_lowercase()) {
-            bail!("duplicate archive entry: {name}");
-        }
+        register_name(&name, &mut names, &mut parent_paths)?;
         let offset = cursor.u64()?;
         let size = cursor.u64()?;
         let sha256: [u8; 32] = cursor.take(32)?.try_into().unwrap();
@@ -779,6 +816,19 @@ mod tests {
         writer.add_bytes("assets/a.txt", b"a").unwrap();
         assert!(writer.add_bytes("assets/A.txt", b"b").is_err());
         assert!(writer.add_bytes("../escape", b"c").is_err());
+        assert!(writer.add_bytes("assets", b"d").is_err());
+    }
+
+    #[test]
+    fn rejects_file_directory_conflicts() {
+        let dir = tempfile::tempdir().unwrap();
+        let stub = dir.path().join("stub.exe");
+        std::fs::write(&stub, fake_pe()).unwrap();
+        let file = File::create(dir.path().join("foo.exe")).unwrap();
+        let mut writer = Writer::create(file, &stub).unwrap();
+        writer.add_bytes("assets", b"file").unwrap();
+        assert!(writer.add_bytes("assets/a.txt", b"nested").is_err());
+        assert!(writer.add_bytes("Assets/b.txt", b"nested").is_err());
     }
 
     #[test]
