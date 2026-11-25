@@ -288,15 +288,21 @@ fn prepare_output(request: &BuildRequest, inputs: &Inputs) -> Result<PathBuf> {
     if output.is_dir() {
         bail!("output path is a directory: {}", output.display());
     }
-    if let Ok(metadata) = std::fs::symlink_metadata(&output) {
-        if fsutil::is_reparse_point(&metadata) {
-            bail!("refusing to replace a reparse point: {}", output.display());
+    match std::fs::symlink_metadata(&output) {
+        Ok(metadata) => {
+            if fsutil::is_reparse_point(&metadata) {
+                bail!("refusing to replace a reparse point: {}", output.display());
+            }
+            if !request.force {
+                bail!(
+                    "output file already exists; pass --force to replace it: {}",
+                    output.display()
+                );
+            }
         }
-        if !request.force {
-            bail!(
-                "output file already exists; pass --force to replace it: {}",
-                output.display()
-            );
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => {
+            return Err(error).with_context(|| format!("failed to inspect {}", output.display()))
         }
     }
 
