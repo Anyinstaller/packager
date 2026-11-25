@@ -1,5 +1,5 @@
 use anyhow::{bail, Context, Result};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use toml::Value;
 use toml_edit::{value, ArrayOfTables, DocumentMut, Item, Table};
@@ -272,12 +272,17 @@ impl Manifest {
         }
 
         let mut seen = HashSet::new();
+        let entries: HashMap<&str, &Entry> = layout
+            .entries
+            .iter()
+            .map(|entry| (entry.name.as_str(), entry))
+            .collect();
         for component in &self.components {
             if !seen.insert(component.path.to_lowercase()) {
                 bail!("duplicate manifest component: {}", component.path);
             }
-            let entry = layout
-                .entry(&component.path)
+            let entry = entries
+                .get(component.path.as_str())
                 .with_context(|| format!("manifest component is missing: {}", component.path))?;
             if component.name != component.path {
                 bail!(
