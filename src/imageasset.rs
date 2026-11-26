@@ -257,6 +257,21 @@ mod tests {
     }
 
     #[test]
+    fn reencodes_jpeg_background() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("background.jpg");
+        let rgb = [30u8, 60, 90, 10, 20, 30, 40, 50, 60, 70, 80, 90];
+        let mut bytes = Vec::new();
+        JpegEncoder::new_with_quality(&mut bytes, 80)
+            .write_image(&rgb, 2, 2, ExtendedColorType::Rgb8)
+            .unwrap();
+        std::fs::write(&path, bytes).unwrap();
+        let processed = process_background(&path).unwrap();
+        assert_eq!(processed.package_name, "assets/background.jpg");
+        assert!(processed.bytes.starts_with(&[0xFF, 0xD8]));
+    }
+
+    #[test]
     fn converts_png_icon_to_ico() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("icon.png");
