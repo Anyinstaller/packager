@@ -191,6 +191,8 @@ pub fn run(request: BuildRequest) -> Result<()> {
     );
     let manifest_bytes = manifest.render()?;
     writer.add_bytes(MANIFEST_NAME, &manifest_bytes)?;
+    drop(manifest_bytes);
+    drop(manifest);
     let layout = writer.finish()?;
 
     println!(
