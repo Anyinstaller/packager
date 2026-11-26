@@ -40,9 +40,17 @@ pub fn process_icon(source: &Path) -> Result<ProcessedImage> {
     let image = decode(&bytes, format)?;
     let rgba = image.to_rgba8();
 
+    // Resize the source once to the largest frame, then downsample that frame
+    // for the smaller sizes. Resizing a very large source seven times is both
+    // slow and memory-hungry.
+    let largest = fit_square(&rgba, *ICON_SIZES.last().unwrap());
     let mut frames = Vec::with_capacity(ICON_SIZES.len());
     for size in ICON_SIZES {
-        let square = fit_square(&rgba, size);
+        let square = if size == largest.width() {
+            largest.clone()
+        } else {
+            image::imageops::resize(&largest, size, size, image::imageops::FilterType::Lanczos3)
+        };
         let frame = IcoFrame::as_png(
             square.as_raw(),
             square.width(),
