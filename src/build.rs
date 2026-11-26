@@ -172,6 +172,7 @@ pub fn run(request: BuildRequest) -> Result<()> {
     for image in &generated {
         writer.add_bytes(image.package_name(), &image.image.bytes)?;
     }
+    drop(generated);
     for asset in &asset_entries {
         writer.add_file(
             &asset.package_path,
