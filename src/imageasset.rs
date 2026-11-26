@@ -282,6 +282,27 @@ mod tests {
     }
 
     #[test]
+    fn converts_non_square_icon_to_ico() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("icon.png");
+        let image =
+            RgbaImage::from_fn(8, 3, |x, y| Rgba([(x * 30) as u8, (y * 60) as u8, 90, 255]));
+        let mut bytes = Vec::new();
+        PngEncoder::new(&mut bytes)
+            .write_image(
+                image.as_raw(),
+                image.width(),
+                image.height(),
+                ExtendedColorType::Rgba8,
+            )
+            .unwrap();
+        std::fs::write(&path, bytes).unwrap();
+        let processed = process_icon(&path).unwrap();
+        assert_eq!(processed.package_name, "assets/icon.ico");
+        assert!(processed.bytes.starts_with(&[0, 0, 1, 0]));
+    }
+
+    #[test]
     fn converts_avif_background_to_webp() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("background.avif");
