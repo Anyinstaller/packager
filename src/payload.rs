@@ -21,6 +21,7 @@ const ZIP64_EOCD_SIGNATURE: &[u8; 4] = b"PK\x06\x06";
 const ZIP64_LOCATOR_SIGNATURE: &[u8; 4] = b"PK\x06\x07";
 const EOCD_LEN: usize = 22;
 const MAX_COMMENT: usize = u16::MAX as usize;
+const MAX_EOCD_SEARCH: usize = EOCD_LEN + MAX_COMMENT + 20;
 const DOS_DIRECTORY: u32 = 0x10;
 const DOS_REPARSE_POINT: u32 = 0x400;
 const DOS_ATTRIBUTES_MASK: u32 = 0xFFFF;
@@ -43,7 +44,7 @@ fn check_entry_count(file: &mut File, file_len: u64) -> Result<()> {
     if file_len < EOCD_LEN as u64 {
         bail!("payload.zip is not a valid ZIP archive");
     }
-    let window_len = file_len.min((EOCD_LEN + MAX_COMMENT) as u64) as usize;
+    let window_len = file_len.min(MAX_EOCD_SEARCH as u64) as usize;
     let window_start = file_len - window_len as u64;
     file.seek(SeekFrom::Start(window_start))?;
     let mut window = vec![0u8; window_len];
