@@ -19,8 +19,9 @@ covered by the `AIPD` hash directory and by the Authenticode signature.
 - A trusted public code-signing certificate (`.pfx` or certificate store
   thumbprint) for release builds
 
-`--unsigned` is a development-only escape hatch. Release builds must not use
-it; the release stub verifies Authenticode before reading the package.
+`--unsigned` is intended for local development. Public release builds are
+not recommended without Authenticode signing; the release stub still verifies
+Authenticode before reading the package.
 
 ## Build
 
@@ -43,7 +44,9 @@ build\
 ```
 
 `config.toml` is the source configuration. Its `icon` and `background` values
-may be absolute local paths or paths relative to the build directory. URLs,
+may be absolute local paths or paths relative to the build directory. When
+`icon` is omitted, the packager embeds the built-in Anyinstaller icon and
+rewrites the packaged config to `assets/icon.ico`. URLs,
 UNC/device paths, reparse points and non-files are rejected. Source images are
 decoded and re-encoded before being written to `assets\`; the packaged
 configuration is rewritten to the package-relative path.
@@ -95,7 +98,7 @@ Options:
 | `--build-dir <DIR>` | Input directory, default `build` |
 | `--output <FILE>` / `-o` | Output installer, default `foo.exe` |
 | `--force` | Replace an existing output file |
-| `--unsigned` | Development only; never publish the result |
+| `--unsigned` | Local development; public release is not recommended |
 | `--pfx <PFX>` | Code-signing certificate file |
 | `--pfx-password-env <VAR>` | Environment variable holding the PFX password |
 | `--thumbprint <HEX>` | 40-character SHA-1 thumbprint in the current user's store |
@@ -104,7 +107,8 @@ Options:
 | `--description <TEXT>` | Signature description, default is the configured application name |
 
 `--pfx` requires `--pfx-password-env`. `--unsigned` conflicts with `--pfx`
-and `--thumbprint`.
+and `--thumbprint`; it is intended for local development and is not recommended
+for public release.
 
 The output is first written to a temporary file in the output directory. It is
 moved into place only after every validation and signature check passes. A
@@ -200,7 +204,7 @@ both are environment-specific and are not part of the unit test suite.
 
 ## Security notes
 
-- Never publish a package built with `--unsigned`.
+- Public release of a package built with `--unsigned` is not recommended.
 - Keep the signing key outside the build directory and outside any directory
   the installer can write. The packager rejects a PFX located inside the build
   directory or the configured install location.

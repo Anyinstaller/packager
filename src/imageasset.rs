@@ -9,7 +9,7 @@ use image::{
     RgbaImage,
 };
 use std::io::Cursor;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use crate::fsutil;
 
@@ -31,13 +31,16 @@ enum SourceFormat {
 pub struct ProcessedImage {
     pub package_name: String,
     pub bytes: Vec<u8>,
-    pub source: PathBuf,
 }
 
 pub fn process_icon(source: &Path) -> Result<ProcessedImage> {
     let bytes = fsutil::read_limited(source, MAX_IMAGE_BYTES, "icon image")?;
-    let format = detect_format(&bytes)?;
-    let image = decode(&bytes, format)?;
+    process_icon_bytes(&bytes)
+}
+
+pub fn process_icon_bytes(bytes: &[u8]) -> Result<ProcessedImage> {
+    let format = detect_format(bytes)?;
+    let image = decode(bytes, format)?;
     let rgba = image.to_rgba8();
 
     // Resize the source once to the largest frame, then downsample that frame
@@ -69,7 +72,6 @@ pub fn process_icon(source: &Path) -> Result<ProcessedImage> {
     Ok(ProcessedImage {
         package_name: "assets/icon.ico".into(),
         bytes: output,
-        source: source.to_path_buf(),
     })
 }
 
@@ -164,7 +166,6 @@ pub fn process_background(source: &Path) -> Result<ProcessedImage> {
     Ok(ProcessedImage {
         package_name: format!("assets/background.{extension}"),
         bytes: output,
-        source: source.to_path_buf(),
     })
 }
 

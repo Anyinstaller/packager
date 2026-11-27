@@ -55,7 +55,7 @@ struct BuildArgs {
     #[arg(long)]
     force: bool,
 
-    /// Development only: produce an unsigned package. Never publish it.
+    /// Local development: produce an unsigned package (public release is not recommended).
     #[arg(long)]
     unsigned: bool,
 

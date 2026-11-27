@@ -45,6 +45,7 @@ struct Inputs {
 
 struct GeneratedImage {
     image: ProcessedImage,
+    source: Option<PathBuf>,
 }
 
 impl GeneratedImage {
@@ -79,16 +80,23 @@ pub fn run(request: BuildRequest) -> Result<()> {
 
     let assets = assets::scan(&inputs.build_dir)?;
     let mut generated = Vec::new();
-    let mut icon_rewrite = None;
     let mut background_rewrite = None;
 
-    if let Some(icon) = &source_config.parsed.icon {
+    let (icon_image, icon_source) = if let Some(icon) = &source_config.parsed.icon {
         let source = path::resolve_source_image(&inputs.build_dir, icon)
             .context("failed to resolve the icon path")?;
         let processed = imageasset::process_icon(&source).context("failed to process the icon")?;
-        icon_rewrite = Some(processed.package_name.clone());
-        generated.push(GeneratedImage { image: processed });
-    }
+        (processed, Some(source))
+    } else {
+        let processed = imageasset::process_icon_bytes(include_bytes!("../band.png"))
+            .context("failed to process the built-in Anyinstaller icon")?;
+        (processed, None)
+    };
+    let icon_rewrite = Some(icon_image.package_name.clone());
+    generated.push(GeneratedImage {
+        image: icon_image,
+        source: icon_source,
+    });
     if let Some(background) = &source_config.parsed.background {
         if !path::is_special_background(background) && !path::is_hex_color(background) {
             let source = path::resolve_source_image(&inputs.build_dir, background)
@@ -96,7 +104,10 @@ pub fn run(request: BuildRequest) -> Result<()> {
             let processed = imageasset::process_background(&source)
                 .context("failed to process the background")?;
             background_rewrite = Some(processed.package_name.clone());
-            generated.push(GeneratedImage { image: processed });
+            generated.push(GeneratedImage {
+                image: processed,
+                source: Some(source),
+            });
         }
     }
 
@@ -110,16 +121,19 @@ pub fn run(request: BuildRequest) -> Result<()> {
         ParsedConfig::parse(&packaged_config).context("packaged config.toml is invalid")?;
 
     let mut generated_sources: HashMap<String, PathBuf> = HashMap::new();
+    let mut generated_names: HashSet<String> = HashSet::new();
     for image in &generated {
-        generated_sources.insert(
-            image.package_name().to_lowercase(),
-            canonical_source(&image.image.source)?,
-        );
+        let key = image.package_name().to_lowercase();
+        generated_names.insert(key.clone());
+        if let Some(source) = &image.source {
+            generated_sources.insert(key, canonical_source(source)?);
+        }
     }
 
     let mut asset_entries = Vec::new();
     for asset in assets {
-        if let Some(source) = generated_sources.get(&asset.package_path.to_lowercase()) {
+        let key = asset.package_path.to_lowercase();
+        if let Some(source) = generated_sources.get(&key) {
             let asset_source = canonical_source(&asset.source_path)?;
             if !path::same_path(&asset_source, source) {
                 bail!(
@@ -128,6 +142,9 @@ pub fn run(request: BuildRequest) -> Result<()> {
                     source.display()
                 );
             }
+            continue;
+        }
+        if generated_names.contains(&key) {
             continue;
         }
         asset_entries.push(asset);
@@ -211,7 +228,7 @@ pub fn run(request: BuildRequest) -> Result<()> {
         verify_package(&temporary_path, false, false)?;
     } else {
         println!(
-            "WARNING: --unsigned produced a development package with no Authenticode signature"
+            "WARNING: --unsigned produced an unsigned development package; public release is not recommended"
         );
     }
 
@@ -235,7 +252,7 @@ pub fn run(request: BuildRequest) -> Result<()> {
         manifest::hex(&digest)
     );
     if sign_options.is_none() {
-        println!("This file is not signed and must not be published.");
+        println!("This file is not signed; public release is not recommended.");
     }
     Ok(())
 }
@@ -664,10 +681,18 @@ createDesktopShortcut = false
                 "backend.exe",
                 "config.toml",
                 "payload.zip",
+                "assets/icon.ico",
                 "assets/data.txt",
                 "manifest.toml",
             ]
         );
+
+        let packaged_config = package
+            .read_entry_bytes("config.toml", MAX_CONFIG_BYTES)
+            .unwrap();
+        assert!(String::from_utf8(packaged_config)
+            .unwrap()
+            .contains("icon = \"assets/icon.ico\""));
 
         let manifest_bytes = package
             .read_entry_bytes(MANIFEST_NAME, MAX_MANIFEST_BYTES)
@@ -675,7 +700,7 @@ createDesktopShortcut = false
         let manifest = Manifest::parse(&manifest_bytes).unwrap();
         manifest.verify(&package, Some(&output)).unwrap();
         assert_eq!(manifest.stub.size, stub.len() as u64);
-        assert_eq!(manifest.components.len(), 5);
+        assert_eq!(manifest.components.len(), 6);
         assert_eq!(
             manifest.components[4].kind,
             manifest::ComponentKind::Resource
@@ -691,6 +716,27 @@ createDesktopShortcut = false
         assert!(run(fixture.request(false)).is_err());
         assert_eq!(std::fs::read(&output).unwrap(), before);
         run(fixture.request(true)).unwrap();
+    }
+    #[test]
+    fn built_in_icon_is_used_when_config_omits_icon() {
+        let fixture = Fixture::new();
+        std::fs::write(fixture.build.join("assets/icon.ico"), b"stale").unwrap();
+        run(fixture.request(false)).unwrap();
+        let package = archive::Package::open(&fixture.out.join("foo.exe")).unwrap();
+        let entries = entries(&package);
+        assert_eq!(
+            entries
+                .iter()
+                .filter(|name| **name == "assets/icon.ico")
+                .count(),
+            1
+        );
+        let config = package
+            .read_entry_bytes("config.toml", MAX_CONFIG_BYTES)
+            .unwrap();
+        assert!(String::from_utf8(config)
+            .unwrap()
+            .contains("icon = \"assets/icon.ico\""));
     }
 
     #[test]
